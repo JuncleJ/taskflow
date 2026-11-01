@@ -1,0 +1,77 @@
+package dev.taskflow;
+
+import dev.taskflow.auth.*;
+import dev.taskflow.http.*;
+import dev.taskflow.persistence.*;
+import dev.taskflow.task.*;
+import io.vertx.core.*;
+import io.vertx.pgclient.*;
+import io.vertx.sqlclient.*;
+
+public final class Main {
+    public static void main(String[] args) {
+        Vertx vertx = Vertx.vertx();
+        vertx.deployVerticle(new Application()).onFailure(error -> {
+            System.err.println("Запуск не удался: " + error.getMessage());
+            vertx.close().onComplete(v -> System.exit(1));
+        });
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (Exception e) {
+                System.err.println("Не удалось завершить приложение: " + e.getMessage());
+            }
+        }));
+    }
+
+    public static final class Application extends AbstractVerticle {
+        private Pool pool;
+        private TaskExecutor executor;
+
+        @Override
+        public void start(Promise<Void> promise) {
+            String password = System.getenv("DB_PASSWORD");
+            if (password == null || password.isBlank()) {
+                promise.fail("Задайте DB_PASSWORD");
+                return;
+            }
+            PgConnectOptions options = new PgConnectOptions().setHost(env("DB_HOST", "localhost"))
+                    .setPort(number("DB_PORT", 5432)).setDatabase(env("DB_NAME", "taskflow"))
+                    .setUser(env("DB_USER", "taskflow")).setPassword(password);
+            pool = PgBuilder.pool().using(vertx).with(new PoolOptions().setMaxSize(10)).connectingTo(options).build();
+            // Файловая операция также асинхронна; схема поставляется в classpath.
+            Database.initialize(vertx, pool)
+                    .compose(v -> vertx.executeBlocking(() -> new PasswordHasher().hash(PasswordHasher.newToken()), false))
+                    .compose(dummyHash -> {
+                        SseNotifications notifications = new SseNotifications(vertx);
+                        TaskHandlerRegistry registry = new TaskHandlerRegistry(new TimedTaskHandler(vertx, "DEMO", 10, 500), new TimedTaskHandler(vertx, "REPORT", 4, 1000));
+                        PgTaskStore store = new PgTaskStore(pool);
+                        executor = new TaskExecutor(store, registry, notifications::publish, number("TASK_PARALLELISM", 3));
+                        return vertx.createHttpServer().requestHandler(Routes.create(vertx,
+                                        new AuthService(vertx, new PgAuthStore(pool), dummyHash), new TaskService(store, registry, executor), notifications))
+                                .listen(number("HTTP_PORT", 8080));
+                    }).onSuccess(server -> {
+                        System.out.println("TaskFlow: http://localhost:" + server.actualPort());
+                        promise.complete();
+                    })
+                    .onFailure(promise::fail);
+        }
+
+        @Override
+        public void stop(Promise<Void> promise) {
+            if (executor != null) executor.stop();
+            if (pool == null) promise.complete();
+            else pool.close().onComplete(promise);
+        }
+    }
+
+    private static String env(String name, String fallback) {
+        return System.getenv().getOrDefault(name, fallback);
+    }
+
+    private static int number(String name, int fallback) {
+        int value = Integer.parseInt(env(name, String.valueOf(fallback)));
+        if (value < 1) throw new IllegalArgumentException(name + " должен быть положительным");
+        return value;
+    }
+}

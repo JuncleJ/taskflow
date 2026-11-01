@@ -1,0 +1,6 @@
+.tools
+.gradle
+build
+.git
+.idea
+.env
