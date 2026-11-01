@@ -43,12 +43,18 @@ public final class AuthService {
     public Future<UUID> authenticate(String token) {
         if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
             LOG.warn("Проверка токена отклонена operation=authenticate reason={}", token == null ? "missing_token" : "invalid_token_format");
-            return Future.failedFuture(new ApiException(401, "Требуется токен"));
+            return Future.failedFuture(new ApiException(401, "Требуется токен авторизации"));
         }
         return store.authenticate(PasswordHasher.tokenHash(token)).compose(id -> id == null
                         ? Future.failedFuture(new ApiException(401, "Токен истёк или недействителен")) : Future.succeededFuture(id))
                 .onSuccess(id -> LOG.debug("Токен проверен operation=authenticate userId={}", id))
                 .onFailure(error -> logFailure("authenticate", error));
+    }
+
+    public Future<AuthStore.Profile> currentUser(String token) {
+        return authenticate(token).compose(store::profile).compose(profile -> profile == null
+                ? Future.failedFuture(new ApiException(401, "Пользователь сессии не найден"))
+                : Future.succeededFuture(profile));
     }
 
     private Future<String> issue(UUID user) {

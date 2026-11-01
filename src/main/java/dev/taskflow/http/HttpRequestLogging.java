@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 final class HttpRequestLogging {
     private static final Logger LOG = LoggerFactory.getLogger(HttpRequestLogging.class);
     private static final Set<String> PUBLIC_PATHS = Set.of("/", "/index.html", "/style.css", "/app.js",
-            "/api/auth/register", "/api/auth/login", "/api/tasks");
+            "/api/auth/register", "/api/auth/login", "/api/auth/me", "/api/tasks");
 
     static void handle(RoutingContext ctx) {
         long start = System.nanoTime();

@@ -31,6 +31,15 @@ public final class PgAuthStore implements AuthStore {
                 .execute(Tuple.of(hash, user)).mapEmpty();
     }
 
+    public Future<Profile> profile(UUID id) {
+        return pool.preparedQuery("SELECT id,login FROM users WHERE id=$1").execute(Tuple.of(id))
+                .map(rows -> {
+                    if (rows.size() == 0) return null;
+                    Row row = rows.iterator().next();
+                    return new Profile(row.getUUID("id"), row.getString("login"));
+                });
+    }
+
     public Future<UUID> authenticate(String hash) {
         return pool.preparedQuery("SELECT user_id FROM sessions WHERE token_hash=$1 AND expires_at>now()")
                 .execute(Tuple.of(hash)).map(rows -> rows.size() == 0 ? null : rows.iterator().next().getUUID("user_id"));

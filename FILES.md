@@ -54,6 +54,7 @@
 - `src/test/java/dev/taskflow/LoggingConfigurationTest.java`
 - `src/test/java/dev/taskflow/PostgresTest.java`
 - `src/test/java/dev/taskflow/http/SseNotificationsTest.java`
+- `src/test/java/dev/taskflow/http/SseIntegrationTest.java`
 
 ## Документация
 
@@ -87,3 +88,25 @@
 - `README.md` — описание событий и результатов проверки: 16 тестов прошли без пропусков.
 - `FILES.md` — перечень изменений.
 
+## Дополнение: шесть интеграционных сценариев SSE
+
+- `src/test/java/dev/taskflow/http/SseIntegrationTest.java` — новый набор тестов с настоящими HTTP/SSE и PostgreSQL,
+  управляемым прогрессом, проверкой ресурсов и русским описанием назначения каждого сценария.
+- `README.md` — таблица сценариев, условия и команда запуска, особенности и границы проверок.
+- `FILES.md` — перечень добавленных и изменённых файлов.
+
+Код приложения и зависимости не изменены.
+
+## Дополнение: текущий пользователь в шапке
+
+- `src/main/resources/webroot/index.html`, `style.css`, `app.js` — имя рядом с кнопкой выхода,
+  загрузка профиля при восстановлении сессии и очистка при выходе.
+- `src/main/java/dev/taskflow/auth/AuthStore.java`, `AuthService.java` — публичный профиль текущего пользователя.
+- `src/main/java/dev/taskflow/persistence/PgAuthStore.java` — неблокирующая выборка UUID и логина.
+- `src/main/java/dev/taskflow/http/Routes.java` — защищённый GET /api/auth/me.
+- `src/main/java/dev/taskflow/http/HttpRequestLogging.java` — шаблон нового маршрута в access log.
+- `src/test/java/dev/taskflow/MemoryStores.java`, `RoutesTest.java`, `PostgresTest.java` — тестовое хранилище,
+  проверка доступа, изоляции профилей и полей ответа, реальные запросы PostgreSQL.
+- `README.md`, `FILES.md` — описание API, поведения интерфейса и перечень изменений.
+
+Проверено: `gradlew.bat build test` — успешно, все 23 теста прошли без пропусков, включая PostgreSQL.

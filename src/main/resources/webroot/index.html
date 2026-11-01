@@ -12,7 +12,10 @@
     <header>
         <div><p class="eyebrow">ФОНОВЫЕ ЗАДАЧИ</p>
             <h1>TaskFlow</h1></div>
-        <button id="logout" hidden>Выйти</button>
+        <div id="account" class="actions" hidden>
+            <span class="account-name">Вы вошли как <strong id="current-user"></strong></span>
+            <button id="logout">Выйти</button>
+        </div>
     </header>
     <p id="message" role="status" aria-live="polite"></p>
     <section id="auth">

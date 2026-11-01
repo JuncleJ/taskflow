@@ -16,7 +16,7 @@ async function api(path, options = {}) {
     });
     const data = await response.json();
     if (!response.ok) {
-        if (response.status === 401 && !path.startsWith('/api/auth/')) logout();
+        if (response.status === 401 && !['/api/auth/login', '/api/auth/register'].includes(path)) logout();
         throw new Error(data.error || 'Ошибка запроса');
     }
     return data;
@@ -31,7 +31,8 @@ function logout() {
     $('tasks').replaceChildren();
     $('auth').hidden = false;
     $('workspace').hidden = true;
-    $('logout').hidden = true;
+    $('account').hidden = true;
+    $('current-user').textContent = '';
 }
 
 async function authenticate(register) {
@@ -128,11 +129,12 @@ async function subscribe(id) {
 
 async function load() {
     const requestedToken = token;
-    const tasks = await api('/api/tasks');
+    const [user, tasks] = await Promise.all([api('/api/auth/me'), api('/api/tasks')]);
     if (!token || token !== requestedToken) return;
     $('auth').hidden = true;
     $('workspace').hidden = false;
-    $('logout').hidden = false;
+    $('current-user').textContent = user.login;
+    $('account').hidden = false;
     tasks.reverse().forEach(task => {
         render(task);
         if (!terminal(task)) subscribe(task.id);

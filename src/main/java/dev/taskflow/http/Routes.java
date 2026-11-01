@@ -27,6 +27,13 @@ public final class Routes {
         router.route("/api/*").handler(BodyHandler.create().setBodyLimit(4096));
         router.post("/api/auth/register").handler(ctx -> credentials(ctx, auth, true));
         router.post("/api/auth/login").handler(ctx -> credentials(ctx, auth, false));
+        router.get("/api/auth/me").handler(ctx -> {
+            String header = ctx.request().getHeader("Authorization");
+            auth.currentUser(header != null && header.startsWith("Bearer ") ? header.substring(7) : null)
+                    .onSuccess(profile -> json(ctx, 200, new JsonObject()
+                            .put("id", profile.id().toString()).put("login", profile.login())))
+                    .onFailure(ctx::fail);
+        });
         router.route("/api/tasks*").handler(ctx -> {
             String header = ctx.request().getHeader("Authorization");
             auth.authenticate(header != null && header.startsWith("Bearer ") ? header.substring(7) : null)

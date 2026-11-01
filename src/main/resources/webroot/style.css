@@ -37,6 +37,11 @@ h2 {
     font-size: 22px;
 }
 
+.account-name {
+    max-width: 32ch;
+    overflow-wrap: anywhere;
+}
+
 .eyebrow {
     color: #91a9f7;
     font-size: 12px;

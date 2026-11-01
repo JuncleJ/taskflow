@@ -222,6 +222,10 @@ class RoutesTest {
                 return io.vertx.core.Future.failedFuture("db-secret-marker");
             }
 
+            public io.vertx.core.Future<Profile> profile(UUID id) {
+                return io.vertx.core.Future.failedFuture("db-secret-marker");
+            }
+
             public io.vertx.core.Future<Void> session(String hash, UUID user) {
                 return io.vertx.core.Future.failedFuture("db-secret-marker");
             }
@@ -234,6 +238,25 @@ class RoutesTest {
         assertThrows(Exception.class, () -> await(service.login("private_login", "password123")));
         assertTrue(logEvents.stream().anyMatch(e -> e.getLevel() == Level.ERROR && e.getFormattedMessage().contains("operation=login reason=internal_error errorType=")));
         assertFalse(logEvents.stream().anyMatch(e -> e.getFormattedMessage().contains("db-secret-marker") || e.getThrowableProxy() != null));
+    }
+
+    @Test
+    void currentUserRequiresValidSessionAndReturnsOnlyItsPublicProfile() throws Exception {
+        assertEquals(401, request("GET", "/api/auth/me", null, null).statusCode());
+        assertEquals(401, request("GET", "/api/auth/me", "invalid-token", null).statusCode());
+        assertEquals(401, request("GET", "/api/auth/me", PasswordHasher.newToken(), null).statusCode());
+        String alice = register("alice"), bob = register("bob");
+        HttpResponse<String> response = request("GET", "/api/auth/me?login=bob", alice, null);
+        assertEquals(200, response.statusCode());
+        assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+        JsonObject profile = new JsonObject(response.body());
+        assertEquals(Set.of("id", "login"), profile.fieldNames());
+        assertEquals("alice", profile.getString("login"));
+        UUID.fromString(profile.getString("id"));
+        assertEquals(profile, new JsonObject(request("GET", "/api/auth/me", alice, null).body()));
+        JsonObject otherProfile = new JsonObject(request("GET", "/api/auth/me", bob, null).body());
+        assertEquals("bob", otherProfile.getString("login"));
+        assertNotEquals(profile.getString("id"), otherProfile.getString("id"));
     }
 
 }

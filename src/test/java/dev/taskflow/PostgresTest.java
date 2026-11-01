@@ -85,6 +85,9 @@ class PostgresTest {
         String hash = PasswordHasher.tokenHash(PasswordHasher.newToken());
         await(auth.session(hash, owner));
         assertEquals(owner, await(auth.authenticate(hash)));
+        assertEquals(owner, await(auth.profile(owner)).id());
+        assertEquals("alice", await(auth.profile(owner)).login());
+        assertNull(await(auth.profile(UUID.randomUUID())));
         await(pool.query("UPDATE sessions SET expires_at=now()-interval '1 second'").execute());
         assertNull(await(auth.authenticate(hash)));
     }

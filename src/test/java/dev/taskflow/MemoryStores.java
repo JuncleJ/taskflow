@@ -51,6 +51,12 @@ final class MemoryStores {
             return Future.succeededFuture(users.get(login));
         }
 
+        public Future<Profile> profile(UUID id) {
+            return Future.succeededFuture(users.entrySet().stream()
+                    .filter(entry -> entry.getValue().id().equals(id))
+                    .map(entry -> new Profile(id, entry.getKey())).findFirst().orElse(null));
+        }
+
         public Future<Void> session(String hash, UUID user) {
             sessions.put(hash, user);
             return Future.succeededFuture();
