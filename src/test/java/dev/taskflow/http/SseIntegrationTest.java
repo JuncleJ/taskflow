@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Реальные HTTP/SSE, авторизация, исполнитель и PostgreSQL в отдельной случайной схеме.
- * Только обработчик DEMO управляется тестом: каждый шаг разрешается явно, без ожиданий по времени.
+ * CONTROLLED используется для детерминированных сценариев; DEMO и CPU_TASK — настоящие обработчики приложения.
  */
 @EnabledIfEnvironmentVariable(named = "TEST_DB_PORT", matches = ".+")
 class SseIntegrationTest {
@@ -36,6 +36,8 @@ class SseIntegrationTest {
     private String schema;
     private HttpServer server;
     private TaskExecutor executor;
+    private CpuTaskHandler cpu;
+    private Promise<Void> cpuCheckpointGate;
     private SseNotifications notifications;
     private PgTaskStore store;
     private final ControlledHandler handler = new ControlledHandler();
@@ -83,7 +85,23 @@ class SseIntegrationTest {
                     });
             notifications = new SseNotifications(trackedTimers, 50);
             store = new PgTaskStore(pool);
-            TaskHandlerRegistry registry = new TaskHandlerRegistry(handler);
+            cpu = new CpuTaskHandler(vertx, 2, 2);
+            TaskHandler observedCpu = new TaskHandler() {
+                public String type() {
+                    return cpu.type();
+                }
+
+                public JsonObject parameters(JsonObject input) {
+                    return cpu.parameters(input);
+                }
+
+                public io.vertx.core.Future<Void> execute(Task task, IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
+                    // Тест может задержать подтверждение первого сохранённого checkpoint, не подменяя вычисления/SQL.
+                    return cpu.execute(task, value -> progress.apply(value).compose(v ->
+                            cpuCheckpointGate != null && value == 5 ? cpuCheckpointGate.future() : io.vertx.core.Future.succeededFuture()), cancellation);
+                }
+            };
+            TaskHandlerRegistry registry = new TaskHandlerRegistry(handler, new DemoTaskHandler(vertx), observedCpu);
             executor = new TaskExecutor(store, registry, task -> {
                 // Управляемое окно между сохранением терминального статуса и его SSE-доставкой.
                 if (!holdTerminalNotifications || !task.terminal()) notifications.publish(task);
@@ -110,6 +128,8 @@ class SseIntegrationTest {
                 executor.stop();
                 return io.vertx.core.Future.succeededFuture();
             });
+            if (cpu != null) await(cpu.close());
+            if (cpuCheckpointGate != null) cpuCheckpointGate.tryComplete();
             if (pool != null) await(pool.close());
             if (admin != null && schema != null) await(admin.query("DROP SCHEMA " + schema + " CASCADE").execute());
         } finally {
@@ -316,6 +336,97 @@ class SseIntegrationTest {
         awaitResources(new Resources(0, 0, 0, 0));
     }
 
+    @Test
+    @DisplayName("HTTP валидирует параметры DEMO/CPU_TASK до создания задач и сохраняет значения по умолчанию/границы")
+    void configurableParametersAreValidatedAndPersisted() throws Exception {
+        for (JsonObject request : List.of(new JsonObject().put("type", "DEMO"),
+                new JsonObject().put("type", "DEMO").put("durationSeconds", 1),
+                new JsonObject().put("type", "DEMO").put("durationSeconds", 300))) {
+            JsonObject created = json("POST", "/api/tasks", request, 202);
+            UUID id = UUID.fromString(created.getString("id"));
+            int duration = request.getInteger("durationSeconds", 5);
+            assertEquals(duration, created.getJsonObject("parameters").getInteger("durationSeconds"));
+            assertEquals(duration, await(store.find(owner, id)).parameters().getInteger("durationSeconds"));
+            json("POST", "/api/tasks/" + id + "/cancel", null, 200);
+        }
+        int before = await(store.list(owner)).size();
+        for (Object invalid : Arrays.asList(0, -1, 301, 1.5, "5", true, null, Long.MAX_VALUE))
+            json("POST", "/api/tasks", new JsonObject().put("type", "DEMO").put("durationSeconds", invalid), 400);
+        for (Object invalid : Arrays.asList(1, 10_000_001, 2.5, "100", false, null, Long.MAX_VALUE))
+            json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK").put("limit", invalid), 400);
+        json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK"), 400);
+        json("POST", "/api/tasks", new JsonObject().put("type", "DEMO").put("limit", 100), 400);
+        assertEquals(before, await(store.list(owner)).size());
+    }
+
+    @Test
+    @DisplayName("Настроенный DEMO длится одну секунду и доставляет завершение через SSE")
+    void oneSecondDemoCompletesWithPersistedParametersAndSse() throws Exception {
+        long start = System.nanoTime();
+        UUID id = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "DEMO").put("durationSeconds", 1), 202).getString("id"));
+        try (SseClient sse = subscribe(id)) {
+            Event completed = sse.expect("completed", "COMPLETED", 100);
+            assertEquals(1, completed.data().getJsonObject("parameters").getInteger("durationSeconds"));
+            sse.expectEnd();
+        }
+        assertTrue(System.nanoTime() - start >= TimeUnit.SECONDS.toNanos(1));
+        assertEquals(Task.Status.COMPLETED, await(store.find(owner, id)).status());
+        awaitResources(new Resources(0, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("CPU_TASK выполняет вычисления, сохраняет прогресс/параметры в PostgreSQL и завершает SSE")
+    void cpuTaskCompletesThroughRealHttpDatabaseAndSse() throws Exception {
+        UUID id = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK").put("limit", 1_000_000), 202).getString("id"));
+        try (SseClient sse = subscribe(id)) {
+            Event completed = sse.expect("completed", "COMPLETED", 100);
+            assertEquals(1_000_000, completed.data().getJsonObject("parameters").getInteger("limit"));
+            assertNull(completed.data().getString("error"));
+            sse.expectEnd();
+        }
+        Task saved = await(store.find(owner, id));
+        assertEquals(Task.Status.COMPLETED, saved.status());
+        assertEquals(100, saved.progress());
+        assertNotNull(saved.finishedAt());
+        assertEquals(1_000_000, saved.parameters().getInteger("limit"));
+        awaitResources(new Resources(0, 0, 0, 0));
+    }
+
+    @Test
+    @DisplayName("Две CPU_TASK активны одновременно; HTTP доступен, отмена действительно останавливает worker и сообщает SSE")
+    void httpStaysResponsiveAndCpuCancellationIsDelivered() throws Exception {
+        onContext(() -> {
+            cpuCheckpointGate = Promise.promise();
+            return io.vertx.core.Future.succeededFuture();
+        });
+        UUID first = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK").put("limit", CpuTaskHandler.MAX_LIMIT), 202).getString("id"));
+        UUID second = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK").put("limit", CpuTaskHandler.MAX_LIMIT), 202).getString("id"));
+        awaitCondition(() -> await(store.find(owner, first)).progress() == 5 && await(store.find(owner, second)).progress() == 5);
+        try (SseClient a = subscribe(first); SseClient b = subscribe(second)) {
+            assertEvent(a.next(), "progress", "RUNNING", 5);
+            assertEvent(b.next(), "progress", "RUNNING", 5);
+            long start = System.nanoTime();
+            HttpResponse<String> list = client.send(HttpRequest.newBuilder(URI.create(base + "/api/tasks"))
+                    .header("Authorization", "Bearer " + token).timeout(Duration.ofSeconds(2)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, list.statusCode());
+            assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(2));
+            assertEquals("sse_user", json("GET", "/api/auth/me", null, 200).getString("login"));
+            assertEquals("CANCELLED", json("POST", "/api/tasks/" + first + "/cancel", null, 200).getString("status"));
+            assertEquals("CANCELLED", json("POST", "/api/tasks/" + second + "/cancel", null, 200).getString("status"));
+            a.expect("cancelled", "CANCELLED", 5);
+            a.expectEnd();
+            b.expect("cancelled", "CANCELLED", 5);
+            b.expectEnd();
+        }
+        onContext(() -> {
+            cpuCheckpointGate.complete();
+            return io.vertx.core.Future.succeededFuture();
+        });
+        assertEquals(Task.Status.CANCELLED, await(store.find(owner, first)).status());
+        assertEquals(Task.Status.CANCELLED, await(store.find(owner, second)).status());
+        awaitResources(new Resources(0, 0, 0, 0));
+    }
+
     private CompletableFuture<HttpResponse<String>> requestCancellation(UUID id) {
         return client.sendAsync(HttpRequest.newBuilder(URI.create(base + "/api/tasks/" + id + "/cancel"))
                 .header("Authorization", "Bearer " + token).timeout(Duration.ofSeconds(5))
@@ -323,7 +434,7 @@ class SseIntegrationTest {
     }
 
     private UUID createTask() throws Exception {
-        UUID id = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "DEMO"), 202).getString("id"));
+        UUID id = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "CONTROLLED"), 202).getString("id"));
         await(handler.started.future());
         return id;
     }
@@ -415,10 +526,10 @@ class SseIntegrationTest {
         CancellationToken cancellation;
 
         public String type() {
-            return "DEMO";
+            return "CONTROLLED";
         }
 
-        public io.vertx.core.Future<Void> execute(IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
+        public io.vertx.core.Future<Void> execute(Task task, IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
             this.progress = progress;
             this.cancellation = cancellation;
             started.complete();

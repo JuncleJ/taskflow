@@ -1,6 +1,7 @@
 package dev.taskflow.task;
 
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -25,10 +26,28 @@ public final class TaskService {
     }
 
     public Future<Task> create(UUID owner, String type) {
-        registry.get(type);
-        return store.create(owner, type).onSuccess(task -> {
+        return create(owner, type, new JsonObject());
+    }
+
+    public Future<Task> create(UUID owner, String type, JsonObject input) {
+        JsonObject parameters = registry.get(type).parameters(input);
+        executor.reserve();
+        Future<Task> created;
+        try {
+            created = store.create(owner, type, parameters);
+        } catch (RuntimeException error) {
+            executor.releaseReservation();
+            return Future.failedFuture(error);
+        }
+        return created.transform(outcome -> {
+            if (outcome.failed()) {
+                executor.releaseReservation();
+                return Future.failedFuture(outcome.cause());
+            }
+            Task task = outcome.result();
             LOG.info("Задача создана taskId={} userId={} taskType={}", task.id(), task.ownerId(), task.type());
-            executor.submit(task);
+            executor.submitReserved(task);
+            return Future.succeededFuture(task);
         });
     }
 

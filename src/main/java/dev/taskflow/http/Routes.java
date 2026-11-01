@@ -44,7 +44,9 @@ public final class Routes {
         });
         router.post("/api/tasks").handler(ctx -> {
             JsonObject body = body(ctx);
-            tasks.create(ctx.get("owner"), string(body, "type"))
+            JsonObject parameters = body.copy();
+            parameters.remove("type");
+            tasks.create(ctx.get("owner"), string(body, "type"), parameters)
                     .onSuccess(task -> {
                         ctx.response().putHeader("Location", "/api/tasks/" + task.id());
                         json(ctx, 202, task.json());

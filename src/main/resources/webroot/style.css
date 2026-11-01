@@ -60,6 +60,15 @@ section, article {
     max-width: 520px;
 }
 
+.task-launcher {
+    align-items: flex-end;
+}
+
+.task-launcher label {
+    margin-bottom: 10px;
+    max-width: 220px;
+}
+
 label {
     display: block;
     margin-bottom: 18px;

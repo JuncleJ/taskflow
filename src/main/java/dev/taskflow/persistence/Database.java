@@ -11,6 +11,8 @@ public final class Database {
         return vertx.fileSystem().readFile("db/schema.sql").compose(buffer -> pool.query(buffer.toString()).execute())
                 .compose(v -> vertx.fileSystem().readFile("db/002-cancelled.sql"))
                 .compose(buffer -> pool.query(buffer.toString()).execute())
+                .compose(v -> vertx.fileSystem().readFile("db/003-task-parameters.sql"))
+                .compose(buffer -> pool.query(buffer.toString()).execute())
                 .compose(v -> pool.query("UPDATE tasks SET status='FAILED',finished_at=now(),error='Приложение перезапущено' WHERE status IN ('PENDING','RUNNING')").execute())
                 .compose(v -> pool.query("DELETE FROM sessions WHERE expires_at<=now()").execute()).mapEmpty();
     }

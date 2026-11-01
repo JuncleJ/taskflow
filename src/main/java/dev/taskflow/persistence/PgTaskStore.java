@@ -2,6 +2,7 @@ package dev.taskflow.persistence;
 
 import dev.taskflow.task.*;
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.*;
 
 import java.util.*;
@@ -13,9 +14,9 @@ public final class PgTaskStore implements TaskStore {
         this.pool = pool;
     }
 
-    public Future<Task> create(UUID owner, String type) {
-        return pool.preparedQuery("INSERT INTO tasks(id,owner_id,type,status) VALUES($1,$2,$3,'PENDING') RETURNING *")
-                .execute(Tuple.of(UUID.randomUUID(), owner, type)).map(rows -> map(rows.iterator().next()));
+    public Future<Task> create(UUID owner, String type, JsonObject parameters) {
+        return pool.preparedQuery("INSERT INTO tasks(id,owner_id,type,status,parameters) VALUES($1,$2,$3,'PENDING',$4) RETURNING *")
+                .execute(Tuple.of(UUID.randomUUID(), owner, type, parameters)).map(rows -> map(rows.iterator().next()));
     }
 
     public Future<Task> find(UUID owner, UUID id) {
@@ -52,6 +53,6 @@ public final class PgTaskStore implements TaskStore {
 
     private Task map(Row r) {
         return new Task(r.getUUID("id"), r.getUUID("owner_id"), r.getString("type"), Task.Status.valueOf(r.getString("status")),
-                r.getInteger("progress"), r.getOffsetDateTime("created_at"), r.getOffsetDateTime("started_at"), r.getOffsetDateTime("finished_at"), r.getString("error"));
+                r.getInteger("progress"), r.getOffsetDateTime("created_at"), r.getOffsetDateTime("started_at"), r.getOffsetDateTime("finished_at"), r.getString("error"), r.getJsonObject("parameters"));
     }
 }

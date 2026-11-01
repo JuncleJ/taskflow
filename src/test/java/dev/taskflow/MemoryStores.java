@@ -4,6 +4,7 @@ import dev.taskflow.auth.AuthStore;
 import dev.taskflow.task.*;
 import dev.taskflow.http.ApiException;
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -12,8 +13,8 @@ final class MemoryStores {
     static class Tasks implements TaskStore {
         final Map<UUID, Task> tasks = new LinkedHashMap<>();
 
-        public Future<Task> create(UUID owner, String type) {
-            Task task = new Task(UUID.randomUUID(), owner, type, Task.Status.PENDING, 0, OffsetDateTime.now(), null, null, null);
+        public Future<Task> create(UUID owner, String type, JsonObject parameters) {
+            Task task = new Task(UUID.randomUUID(), owner, type, Task.Status.PENDING, 0, OffsetDateTime.now(), null, null, null, parameters);
             tasks.put(task.id(), task);
             return Future.succeededFuture(task);
         }
@@ -35,7 +36,7 @@ final class MemoryStores {
                 return Future.failedFuture("Недопустимый переход задачи");
             Task task = new Task(id, old.ownerId(), old.type(), status, progress, old.createdAt(),
                     old.startedAt() == null && status == Task.Status.RUNNING ? OffsetDateTime.now() : old.startedAt(),
-                    status == Task.Status.COMPLETED || status == Task.Status.FAILED || status == Task.Status.CANCELLED ? OffsetDateTime.now() : null, error);
+                    status == Task.Status.COMPLETED || status == Task.Status.FAILED || status == Task.Status.CANCELLED ? OffsetDateTime.now() : null, error, old.parameters());
             tasks.put(id, task);
             return Future.succeededFuture(task);
         }

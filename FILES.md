@@ -142,3 +142,43 @@ README не изменялся. Новых зависимостей и Git-ко�
 
 Проверки жизненного цикла: чистая сборка `gradlew.bat clean build test --rerun-tasks` успешна,
 все 42 теста прошли без ошибок и пропусков, включая PostgreSQL и HTTP/SSE. Синтаксис app.js проверен через node --check.
+
+## Изменения по prompts/004-configurable-tasks.md
+
+Созданы:
+
+- `src/main/java/dev/taskflow/task/TaskParameters.java` — строгая проверка числовых параметров.
+- `src/main/java/dev/taskflow/task/DemoTaskHandler.java` — длительность DEMO на неблокирующих таймерах.
+- `src/main/java/dev/taskflow/task/CpuTaskHandler.java` — подсчёт простых чисел в ограниченном CPU-пуле.
+- `src/main/resources/db/003-task-parameters.sql` — JSONB-параметры для существующих баз.
+- `src/test/java/dev/taskflow/task/CpuTaskHandlerTest.java`, `DemoTaskHandlerTest.java` — алгоритм, потоки, отмена,
+  длительность и ограничения.
+- `src/test/java/dev/taskflow/ConfigurableTaskServiceTest.java` — параметры и резервирование ограниченной общей очереди.
+- `docs/configurable-tasks.md` — API, потоки, настройки, технические решения, проверки и ограничения.
+
+Изменены:
+
+- `src/main/java/dev/taskflow/task/Task.java` — защищённые копированием параметры в снимке задачи.
+- `src/main/java/dev/taskflow/task/TaskHandler.java`, `TimedTaskHandler.java` — передача сохранённой задачи в
+  обработчик.
+- `src/main/java/dev/taskflow/task/CancellationToken.java` — неблокирующее уведомление для отмены ожидающей CPU-работы.
+- `src/main/java/dev/taskflow/task/TaskService.java`, `TaskExecutor.java` — нормализация, резервирование очереди и
+  передача параметров.
+- `src/main/java/dev/taskflow/task/TaskStore.java`, `persistence/PgTaskStore.java`, `persistence/Database.java` —
+  сохранение JSONB и инициализация схемы.
+- `src/main/java/dev/taskflow/http/Routes.java` — параметры из тела POST /api/tasks.
+- `src/main/java/dev/taskflow/Main.java` — регистрация обработчиков, настройки и остановка CPU-пула.
+- `.env.example`, `docker-compose.yml` — CPU_WORKERS, CPU_QUEUE_CAPACITY, TASK_QUEUE_CAPACITY.
+- `src/main/resources/webroot/index.html`, `style.css`, `app.js` — поля DEMO/CPU_TASK, отправка и отображение
+  параметров.
+- `src/test/java/dev/taskflow/MemoryStores.java`, `TaskExecutorTest.java`, `TaskLifecycleTest.java`, `RoutesTest.java` —
+  новый контракт обработчиков и хранилища.
+- `src/test/java/dev/taskflow/PostgresTest.java`, `http/SseIntegrationTest.java` — реальные параметры, HTTP/SSE, отмена
+  и доступность HTTP при активных CPU_TASK.
+- `FILES.md` — перечень изменений.
+
+Новых зависимостей и Git-коммитов нет. README не изменялся.
+
+Результат проверки настраиваемых задач: `gradlew.bat clean build test --rerun-tasks` — успешно,
+все 63 теста прошли без ошибок и пропусков, включая PostgreSQL, HTTP/SSE, CPU-потоки и завершение пула.
+Синтаксис app.js проверен через node --check.

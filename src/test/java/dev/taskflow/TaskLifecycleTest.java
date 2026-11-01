@@ -57,7 +57,7 @@ class TaskLifecycleTest {
                     return "CONTROLLED";
                 }
 
-                public Future<Void> execute(IntFunction<Future<Void>> progress, CancellationToken cancellation) {
+                public Future<Void> execute(Task task, IntFunction<Future<Void>> progress, CancellationToken cancellation) {
                     Gate gate = new Gate(progress, cancellation);
                     gates.add(gate);
                     return gate.work.future();

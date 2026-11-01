@@ -24,7 +24,7 @@ public final class TimedTaskHandler implements TaskHandler {
         return type;
     }
 
-    public Future<Void> execute(IntFunction<Future<Void>> progress, CancellationToken cancellation) {
+    public Future<Void> execute(Task task, IntFunction<Future<Void>> progress, CancellationToken cancellation) {
         return step(1, progress, cancellation);
     }
 

@@ -116,6 +116,25 @@ class PostgresTest {
     }
 
     @Test
+    void jsonParametersSurviveUpdatesAndRestart() throws Exception {
+        UUID owner = UUID.randomUUID();
+        await(new PgAuthStore(pool).register(owner, "owner", "test-hash"));
+        PgTaskStore tasks = new PgTaskStore(pool);
+        var parameters = new io.vertx.core.json.JsonObject().put("durationSeconds", 20);
+        Task task = await(tasks.create(owner, "DEMO", parameters));
+        await(tasks.update(task.id(), Task.Status.RUNNING, 50, null));
+        await(tasks.update(task.id(), Task.Status.COMPLETED, 100, null));
+        await(Database.initialize(vertx, pool));
+        assertEquals(parameters, await(tasks.find(owner, task.id())).parameters());
+        assertEquals("jsonb", await(pool.query("SELECT pg_typeof(parameters)::text AS type FROM tasks LIMIT 1").execute()).iterator().next().getString("type"));
+        Task cpu = await(tasks.create(owner, "CPU_TASK", new io.vertx.core.json.JsonObject().put("limit", 100_000)));
+        await(Database.initialize(vertx, pool));
+        Task recovered = await(tasks.find(owner, cpu.id()));
+        assertEquals(Task.Status.FAILED, recovered.status());
+        assertEquals(100_000, recovered.parameters().getInteger("limit"));
+    }
+
+    @Test
     void sessionsExpireAndDuplicateLoginIsRejected() throws Exception {
         PgAuthStore auth = new PgAuthStore(pool);
         UUID owner = UUID.randomUUID();

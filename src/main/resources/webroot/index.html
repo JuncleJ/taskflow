@@ -36,8 +36,19 @@
         <div class="toolbar">
             <div><h2>Мои задачи</h2>
                 <p>Запустите задачу и следите за выполнением в реальном времени.</p></div>
-            <div class="actions">
-                <button data-type="DEMO">Запустить DEMO</button>
+            <div class="actions task-launcher">
+                <div>
+                    <label>DEMO: длительность, с
+                        <input id="duration-seconds" type="number" min="1" max="300" step="1" value="5" required>
+                    </label>
+                    <button data-type="DEMO">Запустить DEMO</button>
+                </div>
+                <div>
+                    <label>CPU_TASK: верхняя граница
+                        <input id="cpu-limit" type="number" min="2" max="10000000" step="1" value="1000000" required>
+                    </label>
+                    <button data-type="CPU_TASK">Запустить CPU_TASK</button>
+                </div>
                 <button data-type="REPORT">Создать REPORT</button>
                 <button id="refresh">Обновить</button>
             </div>

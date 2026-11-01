@@ -93,7 +93,9 @@ function render(task) {
     card.querySelector('strong').textContent = task.type;
     card.querySelector('.status').textContent = `${task.status} · ${task.progress}%`;
     card.querySelector('progress').value = task.progress;
-    card.querySelector('.meta').textContent = `${task.id} · ${new Date(task.createdAt).toLocaleString('ru-RU')}`;
+    const details = task.type === 'DEMO' ? ` · ${task.parameters?.durationSeconds ?? 5} с`
+        : task.type === 'CPU_TASK' ? ` · limit: ${task.parameters?.limit?.toLocaleString('ru-RU')}` : '';
+    card.querySelector('.meta').textContent = `${task.id} · ${new Date(task.createdAt).toLocaleString('ru-RU')}${details}`;
     card.querySelector('.error').textContent = task.error || '';
     card.querySelector('[data-operation="cancel"]').hidden = terminal(task);
     card.querySelector('[data-operation="delete"]').hidden = !terminal(task);
@@ -207,9 +209,15 @@ $('register').addEventListener('click', () => authenticate(true));
 $('logout').addEventListener('click', logout);
 $('refresh').addEventListener('click', () => load().catch(error => message(error.message)));
 document.querySelectorAll('[data-type]').forEach(button => button.addEventListener('click', async () => {
+    const type = button.dataset.type;
+    const input = type === 'DEMO' ? $('duration-seconds') : type === 'CPU_TASK' ? $('cpu-limit') : null;
+    if (input && !input.reportValidity()) return;
+    const request = {type};
+    if (type === 'DEMO') request.durationSeconds = input.valueAsNumber;
+    if (type === 'CPU_TASK') request.limit = input.valueAsNumber;
     button.disabled = true;
     try {
-        const task = await api('/api/tasks', {method: 'POST', body: JSON.stringify({type: button.dataset.type})});
+        const task = await api('/api/tasks', {method: 'POST', body: JSON.stringify(request)});
         render(task);
         subscribe(task.id);
         message('');

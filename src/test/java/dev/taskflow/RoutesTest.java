@@ -58,7 +58,7 @@ class RoutesTest {
                     return "FAIL";
                 }
 
-                public io.vertx.core.Future<Void> execute(java.util.function.IntFunction<io.vertx.core.Future<Void>> p, CancellationToken cancellation) {
+                public io.vertx.core.Future<Void> execute(Task task, java.util.function.IntFunction<io.vertx.core.Future<Void>> p, CancellationToken cancellation) {
                     return io.vertx.core.Future.failedFuture("sensitive-error-marker");
                 }
             };

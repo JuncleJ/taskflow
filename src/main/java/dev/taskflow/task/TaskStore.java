@@ -1,12 +1,17 @@
 package dev.taskflow.task;
 
 import io.vertx.core.Future;
+import io.vertx.core.json.JsonObject;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface TaskStore {
-    Future<Task> create(UUID owner, String type);
+    default Future<Task> create(UUID owner, String type) {
+        return create(owner, type, new JsonObject());
+    }
+
+    Future<Task> create(UUID owner, String type, JsonObject parameters);
 
     Future<Task> find(UUID owner, UUID id);
 

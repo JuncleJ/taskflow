@@ -37,6 +37,7 @@ public final class Main {
     public static final class Application extends AbstractVerticle {
         private Pool pool;
         private TaskExecutor executor;
+        private CpuTaskHandler cpuHandler;
 
         @Override
         public void start(Promise<Void> promise) {
@@ -54,9 +55,10 @@ public final class Main {
                     .compose(v -> vertx.executeBlocking(() -> new PasswordHasher().hash(PasswordHasher.newToken()), false))
                     .compose(dummyHash -> {
                         SseNotifications notifications = new SseNotifications(vertx);
-                        TaskHandlerRegistry registry = new TaskHandlerRegistry(new TimedTaskHandler(vertx, "DEMO", 10, 500), new TimedTaskHandler(vertx, "REPORT", 4, 1000));
+                        cpuHandler = new CpuTaskHandler(vertx, number("CPU_WORKERS", 2), number("CPU_QUEUE_CAPACITY", 16));
+                        TaskHandlerRegistry registry = new TaskHandlerRegistry(new DemoTaskHandler(vertx), new TimedTaskHandler(vertx, "REPORT", 4, 1000), cpuHandler);
                         PgTaskStore store = new PgTaskStore(pool);
-                        executor = new TaskExecutor(store, registry, notifications::publish, number("TASK_PARALLELISM", 3));
+                        executor = new TaskExecutor(store, registry, notifications::publish, number("TASK_PARALLELISM", 3), number("TASK_QUEUE_CAPACITY", 100));
                         return vertx.createHttpServer().requestHandler(Routes.create(vertx,
                                         new AuthService(vertx, new PgAuthStore(pool), dummyHash), new TaskService(store, registry, executor, notifications::deleted), notifications))
                                 .listen(number("HTTP_PORT", 8080));
@@ -70,8 +72,12 @@ public final class Main {
         @Override
         public void stop(Promise<Void> promise) {
             if (executor != null) executor.stop();
-            if (pool == null) promise.complete();
-            else pool.close().onComplete(promise);
+            Future<Void> stopped = cpuHandler == null ? Future.succeededFuture() : cpuHandler.close();
+            stopped.transform(cpuResult -> {
+                Future<Void> closePool = pool == null ? Future.succeededFuture() : pool.close();
+                return closePool.transform(poolResult -> cpuResult.failed() ? Future.<Void>failedFuture(cpuResult.cause())
+                        : poolResult.failed() ? Future.<Void>failedFuture(poolResult.cause()) : Future.<Void>succeededFuture());
+            }).onComplete(promise);
         }
     }
 

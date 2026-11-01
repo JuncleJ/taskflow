@@ -65,7 +65,7 @@ class TaskExecutorTest {
                     return "CONTROLLED";
                 }
 
-                public io.vertx.core.Future<Void> execute(IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
+                public io.vertx.core.Future<Void> execute(Task task, IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
                     Promise<Void> gate = Promise.promise();
                     running.add(gate);
                     return gate.future();
@@ -96,7 +96,7 @@ class TaskExecutorTest {
                     return "BAD";
                 }
 
-                public io.vertx.core.Future<Void> execute(IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
+                public io.vertx.core.Future<Void> execute(Task task, IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
                     return progress.apply(101);
                 }
             };

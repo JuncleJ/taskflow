@@ -1,0 +1,1 @@
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}'::jsonb;

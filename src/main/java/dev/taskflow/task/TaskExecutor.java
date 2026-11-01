@@ -17,6 +17,8 @@ public final class TaskExecutor {
     private final TaskHandlerRegistry registry;
     private final Consumer<Task> notifications;
     private final int parallelism;
+    private final int queueCapacity;
+    private int reservations;
     private final Queue<Task> queue = new ArrayDeque<>();
     private final Map<UUID, Execution> running = new HashMap<>();
     private final Map<UUID, Future<Task>> pendingCancellations = new HashMap<>();
@@ -37,14 +39,37 @@ public final class TaskExecutor {
     }
 
     public TaskExecutor(TaskStore store, TaskHandlerRegistry registry, Consumer<Task> notifications, int parallelism) {
+        this(store, registry, notifications, parallelism, 100);
+    }
+
+    public TaskExecutor(TaskStore store, TaskHandlerRegistry registry, Consumer<Task> notifications, int parallelism, int queueCapacity) {
         if (parallelism < 1) throw new IllegalArgumentException("Параллелизм должен быть положительным");
+        if (queueCapacity < 1 || queueCapacity > 10_000)
+            throw new IllegalArgumentException("Размер очереди должен быть от 1 до 10000");
         this.store = store;
         this.registry = registry;
         this.notifications = notifications;
         this.parallelism = parallelism;
+        this.queueCapacity = queueCapacity;
     }
 
     public void submit(Task task) {
+        reserve();
+        submitReserved(task);
+    }
+
+    void reserve() {
+        if (stopped || running.size() + queue.size() + reservations >= (long) parallelism + queueCapacity)
+            throw new ApiException(429, "Очередь задач заполнена или исполнитель остановлен");
+        reservations++;
+    }
+
+    void releaseReservation() {
+        reservations--;
+    }
+
+    void submitReserved(Task task) {
+        releaseReservation();
         queue.add(task);
         drain();
     }
@@ -52,6 +77,7 @@ public final class TaskExecutor {
     public void stop() {
         stopped = true;
         queue.clear();
+        running.values().forEach(execution -> execution.cancellation.request());
     }
 
     public Future<Task> cancel(Task task) {
@@ -98,7 +124,7 @@ public final class TaskExecutor {
                 LOG.info("Задача запущена taskId={} userId={} taskType={}", task.id(), task.ownerId(), task.type());
                 notifyTask(started);
                 execution.cancellation.check();
-                return registry.get(task.type()).execute(value -> report(execution, value), execution.cancellation);
+                return registry.get(task.type()).execute(task, value -> report(execution, value), execution.cancellation);
             }).transform(work -> {
                 execution.finishing = true;
                 // Даже обработчик, не дождавшийся callback прогресса, не оставит запись после терминального статуса.
