@@ -8,6 +8,8 @@ dependencies {
     implementation(platform("io.vertx:vertx-stack-depchain:5.2.2"))
     implementation("io.vertx:vertx-web")
     implementation("io.vertx:vertx-pg-client")
+    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("ch.qos.logback:logback-classic:1.6.5")
     testImplementation(platform("org.junit:junit-bom:5.12.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

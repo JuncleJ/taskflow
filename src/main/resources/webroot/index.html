@@ -1,27 +1,47 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TaskFlow</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TaskFlow</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
 </head>
 <body>
 <main>
-  <header><div><p class="eyebrow">ФОНОВЫЕ ЗАДАЧИ</p><h1>TaskFlow</h1></div><button id="logout" hidden>Выйти</button></header>
-  <p id="message" role="status" aria-live="polite"></p>
-  <section id="auth">
-    <h2>Вход в рабочее пространство</h2>
-    <form id="auth-form">
-      <label>Логин<input id="login" autocomplete="username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9_]+"></label>
-      <label>Пароль<input id="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128"></label>
-      <div class="actions"><button type="submit">Войти</button><button type="button" id="register">Зарегистрироваться</button></div>
-    </form>
-    <p class="hint">Логин: латинские буквы, цифры и _. Пароль: от 8 символов.</p>
-  </section>
-  <section id="workspace" hidden>
-    <div class="toolbar"><div><h2>Мои задачи</h2><p>Запустите задачу и следите за выполнением в реальном времени.</p></div>
-      <div class="actions"><button data-type="DEMO">Запустить DEMO</button><button data-type="REPORT">Создать REPORT</button><button id="refresh">Обновить</button></div>
-    </div>
-    <p id="empty">У вас пока нет задач.</p><div id="tasks"></div>
-  </section>
+    <header>
+        <div><p class="eyebrow">ФОНОВЫЕ ЗАДАЧИ</p>
+            <h1>TaskFlow</h1></div>
+        <button id="logout" hidden>Выйти</button>
+    </header>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="auth">
+        <h2>Вход в рабочее пространство</h2>
+        <form id="auth-form">
+            <label>Логин<input id="login" autocomplete="username" required minlength="3" maxlength="64"
+                               pattern="[A-Za-z0-9_]+"></label>
+            <label>Пароль<input id="password" type="password" autocomplete="current-password" required minlength="8"
+                                maxlength="128"></label>
+            <div class="actions">
+                <button type="submit">Войти</button>
+                <button type="button" id="register">Зарегистрироваться</button>
+            </div>
+        </form>
+        <p class="hint">Логин: латинские буквы, цифры и _. Пароль: от 8 символов.</p>
+    </section>
+    <section id="workspace" hidden>
+        <div class="toolbar">
+            <div><h2>Мои задачи</h2>
+                <p>Запустите задачу и следите за выполнением в реальном времени.</p></div>
+            <div class="actions">
+                <button data-type="DEMO">Запустить DEMO</button>
+                <button data-type="REPORT">Создать REPORT</button>
+                <button id="refresh">Обновить</button>
+            </div>
+        </div>
+        <p id="empty">У вас пока нет задач.</p>
+        <div id="tasks"></div>
+    </section>
 </main>
-</body></html>
+</body>
+</html>

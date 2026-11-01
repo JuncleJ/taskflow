@@ -8,18 +8,28 @@ import io.vertx.core.*;
 import io.vertx.pgclient.*;
 import io.vertx.sqlclient.*;
 
+import java.util.Arrays;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.LoggerContext;
+
 public final class Main {
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
     public static void main(String[] args) {
         Vertx vertx = Vertx.vertx();
         vertx.deployVerticle(new Application()).onFailure(error -> {
-            System.err.println("Запуск не удался: " + error.getMessage());
+            LOG.error("Запуск не удался errorType={} stack={}", error.getClass().getName(), Arrays.toString(error.getStackTrace()));
             vertx.close().onComplete(v -> System.exit(1));
         });
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 vertx.close().toCompletionStage().toCompletableFuture().get(10, java.util.concurrent.TimeUnit.SECONDS);
             } catch (Exception e) {
-                System.err.println("Не удалось завершить приложение: " + e.getMessage());
+                LOG.error("Не удалось завершить приложение errorType={} stack={}", e.getClass().getName(), Arrays.toString(e.getStackTrace()));
+            } finally {
+                ((LoggerContext) LoggerFactory.getILoggerFactory()).stop();
             }
         }));
     }
@@ -51,7 +61,7 @@ public final class Main {
                                         new AuthService(vertx, new PgAuthStore(pool), dummyHash), new TaskService(store, registry, executor), notifications))
                                 .listen(number("HTTP_PORT", 8080));
                     }).onSuccess(server -> {
-                        System.out.println("TaskFlow: http://localhost:" + server.actualPort());
+                        LOG.info("TaskFlow запущен port={}", server.actualPort());
                         promise.complete();
                     })
                     .onFailure(promise::fail);

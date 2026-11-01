@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -23,6 +23,7 @@ services:
       DB_USER: ${DB_USER:-taskflow}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       TASK_PARALLELISM: ${TASK_PARALLELISM:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "${HTTP_PORT:-8080}:8080"
     depends_on:
