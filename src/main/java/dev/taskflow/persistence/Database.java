@@ -9,6 +9,8 @@ public final class Database {
 
     public static Future<Void> initialize(Vertx vertx, Pool pool) {
         return vertx.fileSystem().readFile("db/schema.sql").compose(buffer -> pool.query(buffer.toString()).execute())
+                .compose(v -> vertx.fileSystem().readFile("db/002-cancelled.sql"))
+                .compose(buffer -> pool.query(buffer.toString()).execute())
                 .compose(v -> pool.query("UPDATE tasks SET status='FAILED',finished_at=now(),error='Приложение перезапущено' WHERE status IN ('PENDING','RUNNING')").execute())
                 .compose(v -> pool.query("DELETE FROM sessions WHERE expires_at<=now()").execute()).mapEmpty();
     }

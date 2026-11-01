@@ -7,10 +7,10 @@ import java.util.UUID;
 
 public record Task(UUID id, UUID ownerId, String type, Status status, int progress,
                    OffsetDateTime createdAt, OffsetDateTime startedAt, OffsetDateTime finishedAt, String error) {
-    public enum Status {PENDING, RUNNING, COMPLETED, FAILED}
+    public enum Status {PENDING, RUNNING, COMPLETED, FAILED, CANCELLED}
 
     public boolean terminal() {
-        return status == Status.COMPLETED || status == Status.FAILED;
+        return status == Status.COMPLETED || status == Status.FAILED || status == Status.CANCELLED;
     }
 
     public JsonObject json() {

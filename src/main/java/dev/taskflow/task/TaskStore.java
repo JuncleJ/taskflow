@@ -13,4 +13,6 @@ public interface TaskStore {
     Future<List<Task>> list(UUID owner);
 
     Future<Task> update(UUID id, Task.Status status, int progress, String error);
+
+    Future<Boolean> delete(UUID owner, UUID id);
 }

@@ -7,5 +7,8 @@ import java.util.function.IntFunction;
 public interface TaskHandler {
     String type();
 
-    Future<Void> execute(IntFunction<Future<Void>> progress);
+    /**
+     * Future завершается только после остановки работы; блокировать Event Loop запрещено.
+     */
+    Future<Void> execute(IntFunction<Future<Void>> progress, CancellationToken cancellation);
 }

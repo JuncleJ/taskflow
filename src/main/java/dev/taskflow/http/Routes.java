@@ -54,11 +54,18 @@ public final class Routes {
         router.get("/api/tasks").handler(ctx -> tasks.list(ctx.get("owner"))
                 .onSuccess(list -> json(ctx, 200, new JsonArray(list.stream().map(Task::json).toList()))).onFailure(ctx::fail));
         router.get("/api/tasks/:id").handler(ctx -> find(ctx, tasks).onSuccess(task -> json(ctx, 200, task.json())).onFailure(ctx::fail));
+        router.post("/api/tasks/:id/cancel").handler(ctx -> tasks.cancel(ctx.get("owner"), UUID.fromString(ctx.pathParam("id")))
+                .onSuccess(task -> json(ctx, 200, task.json())).onFailure(ctx::fail));
+        router.delete("/api/tasks/:id").handler(ctx -> tasks.delete(ctx.get("owner"), UUID.fromString(ctx.pathParam("id")))
+                .onSuccess(v -> ctx.response().setStatusCode(204).end()).onFailure(ctx::fail));
         router.get("/api/tasks/:id/events").handler(ctx -> find(ctx, tasks).onSuccess(task -> {
             // Первая подписка создаётся в том же context, что и обновления движка.
             sse.subscribe(task, ctx);
             // Повторное чтение закрывает окно между SELECT и добавлением подписчика.
-            tasks.find(ctx.get("owner"), task.id()).onSuccess(sse::publish).onFailure(e -> ctx.response().end());
+            tasks.find(ctx.get("owner"), task.id()).onSuccess(current -> {
+                if (current == null) sse.deleted(task);
+                else sse.publish(current);
+            }).onFailure(e -> ctx.response().end());
         }).onFailure(ctx::fail));
         router.route("/api/*").handler(ctx -> ctx.fail(new ApiException(404, "Маршрут не найден")));
         router.route().handler(StaticHandler.create("webroot").setCachingEnabled(false));

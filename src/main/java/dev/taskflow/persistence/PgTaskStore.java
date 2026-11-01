@@ -33,14 +33,21 @@ public final class PgTaskStore implements TaskStore {
     }
 
     public Future<Task> update(UUID id, Task.Status status, int progress, String error) {
+        if (progress < 0 || progress > 100 || status == Task.Status.COMPLETED && progress != 100)
+            return Future.failedFuture("Некорректный прогресс задачи");
         return pool.preparedQuery("""
                         UPDATE tasks SET status=$2, progress=$3, error=$4,
                         started_at=CASE WHEN $2='RUNNING' THEN COALESCE(started_at,now()) ELSE started_at END,
-                        finished_at=CASE WHEN $2 IN ('COMPLETED','FAILED') THEN now() ELSE finished_at END
-                        WHERE id=$1 AND (status='PENDING' AND $2 IN ('RUNNING','FAILED')
-                          OR status='RUNNING' AND $2 IN ('RUNNING','COMPLETED','FAILED')) AND progress <= $3 RETURNING *
+                        finished_at=CASE WHEN $2 IN ('COMPLETED','FAILED','CANCELLED') THEN now() ELSE finished_at END
+                        WHERE id=$1 AND (status='PENDING' AND $2 IN ('RUNNING','FAILED','CANCELLED')
+                          OR status='RUNNING' AND $2 IN ('RUNNING','COMPLETED','FAILED','CANCELLED')) AND progress <= $3 RETURNING *
                         """).execute(Tuple.of(id, status.name(), progress, error))
                 .compose(rows -> rows.size() == 0 ? Future.failedFuture("Недопустимый переход задачи") : Future.succeededFuture(map(rows.iterator().next())));
+    }
+
+    public Future<Boolean> delete(UUID owner, UUID id) {
+        return pool.preparedQuery("DELETE FROM tasks WHERE id=$1 AND owner_id=$2 AND status IN ('COMPLETED','FAILED','CANCELLED')")
+                .execute(Tuple.of(id, owner)).map(rows -> rows.rowCount() == 1);
     }
 
     private Task map(Row r) {

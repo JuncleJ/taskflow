@@ -34,6 +34,7 @@ final class HttpRequestLogging {
 
     private static String route(String path) {
         if (PUBLIC_PATHS.contains(path)) return path;
+        if (path.matches("/api/tasks/[^/]+/cancel")) return "/api/tasks/:id/cancel";
         if (path.matches("/api/tasks/[^/]+/events")) return "/api/tasks/:id/events";
         if (path.matches("/api/tasks/[^/]+")) return "/api/tasks/:id";
         return "<unmatched>";

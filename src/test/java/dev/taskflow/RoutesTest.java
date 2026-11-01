@@ -58,14 +58,14 @@ class RoutesTest {
                     return "FAIL";
                 }
 
-                public io.vertx.core.Future<Void> execute(java.util.function.IntFunction<io.vertx.core.Future<Void>> p) {
+                public io.vertx.core.Future<Void> execute(java.util.function.IntFunction<io.vertx.core.Future<Void>> p, CancellationToken cancellation) {
                     return io.vertx.core.Future.failedFuture("sensitive-error-marker");
                 }
             };
             TaskHandlerRegistry registry = new TaskHandlerRegistry(new TimedTaskHandler(vertx, "DEMO", 4, 30), new TimedTaskHandler(vertx, "REPORT", 4, 30), failing);
             TaskExecutor executor = new TaskExecutor(store, registry, sse::publish, 2);
             vertx.createHttpServer().requestHandler(Routes.create(vertx, new AuthService(vertx, new MemoryStores.Auth(), dummy),
-                    new TaskService(store, registry, executor), sse)).listen(0).onComplete(ready);
+                    new TaskService(store, registry, executor, sse::deleted), sse)).listen(0).onComplete(ready);
         });
         server = await(ready.future());
         base = "http://localhost:" + server.actualPort();

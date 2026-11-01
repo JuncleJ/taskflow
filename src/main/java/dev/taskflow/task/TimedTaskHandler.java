@@ -24,14 +24,18 @@ public final class TimedTaskHandler implements TaskHandler {
         return type;
     }
 
-    public Future<Void> execute(IntFunction<Future<Void>> progress) {
-        return step(1, progress);
+    public Future<Void> execute(IntFunction<Future<Void>> progress, CancellationToken cancellation) {
+        return step(1, progress, cancellation);
     }
 
-    private Future<Void> step(int n, IntFunction<Future<Void>> progress) {
+    private Future<Void> step(int n, IntFunction<Future<Void>> progress, CancellationToken cancellation) {
+        cancellation.check();
         if (n > steps) return Future.succeededFuture();
         Promise<Void> pause = Promise.promise();
         vertx.setTimer(delay, timer -> pause.complete());
-        return pause.future().compose(v -> progress.apply(n * 100 / steps)).compose(v -> step(n + 1, progress));
+        return pause.future().compose(v -> {
+            cancellation.check();
+            return progress.apply(n * 100 / steps);
+        }).compose(v -> step(n + 1, progress, cancellation));
     }
 }

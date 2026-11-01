@@ -10,6 +10,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.util.UUID;
+import java.util.List;
 
 import static dev.taskflow.TaskExecutorTest.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -74,6 +75,44 @@ class PostgresTest {
         assertThrows(Exception.class, () -> await(tasks.update(completed.id(), Task.Status.RUNNING, 100, null)));
         await(Database.initialize(vertx, pool));
         assertEquals(Task.Status.COMPLETED, await(tasks.find(alice, completed.id())).status());
+    }
+
+    @Test
+    void cancelledIsTerminalSurvivesRestartAndCanBeDeleted() throws Exception {
+        UUID owner = UUID.randomUUID(), stranger = UUID.randomUUID();
+        PgAuthStore auth = new PgAuthStore(pool);
+        await(auth.register(owner, "owner", "test-hash"));
+        PgTaskStore tasks = new PgTaskStore(pool);
+        Task pending = await(tasks.create(owner, "DEMO"));
+        assertFalse(await(tasks.delete(owner, pending.id())));
+        Task cancelled = await(tasks.update(pending.id(), Task.Status.CANCELLED, 0, null));
+        assertNull(cancelled.startedAt());
+        assertNotNull(cancelled.finishedAt());
+        await(Database.initialize(vertx, pool));
+        assertEquals(cancelled, await(tasks.find(owner, pending.id())));
+        for (Task.Status target : List.of(Task.Status.RUNNING, Task.Status.COMPLETED, Task.Status.FAILED))
+            assertThrows(Exception.class, () -> await(tasks.update(pending.id(), target, 100, null)));
+        assertFalse(await(tasks.delete(stranger, pending.id())));
+        assertTrue(await(tasks.delete(owner, pending.id())));
+        assertNull(await(tasks.find(owner, pending.id())));
+        assertFalse(await(tasks.delete(owner, pending.id())));
+    }
+
+    @Test
+    void terminalDeleteAndLateStatusUpdateCannotResurrectTask() throws Exception {
+        UUID owner = UUID.randomUUID();
+        await(new PgAuthStore(pool).register(owner, "owner", "test-hash"));
+        PgTaskStore tasks = new PgTaskStore(pool);
+        for (Task.Status terminal : List.of(Task.Status.COMPLETED, Task.Status.FAILED, Task.Status.CANCELLED)) {
+            Task task = await(tasks.create(owner, "DEMO"));
+            await(tasks.update(task.id(), Task.Status.RUNNING, 0, null));
+            await(tasks.update(task.id(), terminal, 100, terminal == Task.Status.FAILED ? "Ошибка" : null));
+            var lateUpdate = tasks.update(task.id(), Task.Status.RUNNING, 100, null);
+            var deletion = tasks.delete(owner, task.id());
+            assertTrue(await(deletion));
+            assertThrows(Exception.class, () -> await(lateUpdate));
+            assertNull(await(tasks.find(owner, task.id())));
+        }
     }
 
     @Test

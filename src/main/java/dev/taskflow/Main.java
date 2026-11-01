@@ -58,7 +58,7 @@ public final class Main {
                         PgTaskStore store = new PgTaskStore(pool);
                         executor = new TaskExecutor(store, registry, notifications::publish, number("TASK_PARALLELISM", 3));
                         return vertx.createHttpServer().requestHandler(Routes.create(vertx,
-                                        new AuthService(vertx, new PgAuthStore(pool), dummyHash), new TaskService(store, registry, executor), notifications))
+                                        new AuthService(vertx, new PgAuthStore(pool), dummyHash), new TaskService(store, registry, executor, notifications::deleted), notifications))
                                 .listen(number("HTTP_PORT", 8080));
                     }).onSuccess(server -> {
                         LOG.info("TaskFlow запущен port={}", server.actualPort());

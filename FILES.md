@@ -110,3 +110,35 @@
 - `README.md`, `FILES.md` — описание API, поведения интерфейса и перечень изменений.
 
 Проверено: `gradlew.bat build test` — успешно, все 23 теста прошли без пропусков, включая PostgreSQL.
+
+## Изменения по prompts/003-task-lifecycle.md
+
+Созданы:
+
+- `src/main/java/dev/taskflow/task/CancellationToken.java` — кооперативный сигнал отмены.
+- `src/main/resources/db/002-cancelled.sql` — совместимое обновление CHECK существующей таблицы.
+- `src/test/java/dev/taskflow/TaskLifecycleTest.java` — управляемые проверки жизненного цикла и гонок.
+- `docs/task-lifecycle.md` — API, переходы, технические решения, проверки и ограничения.
+
+Изменены:
+
+- `src/main/java/dev/taskflow/task/Task.java` — терминальный статус CANCELLED.
+- `src/main/java/dev/taskflow/task/TaskHandler.java`, `TimedTaskHandler.java` — контракт и обработка отмены.
+- `src/main/java/dev/taskflow/task/TaskExecutor.java` — отмена очереди/исполнения, финализация и освобождение слота.
+- `src/main/java/dev/taskflow/task/TaskService.java`, `TaskStore.java` — операции отмены/удаления и проверки доступа.
+- `src/main/java/dev/taskflow/persistence/PgTaskStore.java`, `Database.java` — условные SQL-переходы, физическое
+  удаление и миграция.
+- `src/main/java/dev/taskflow/http/Routes.java`, `HttpRequestLogging.java` — endpoints и шаблон маршрута отмены.
+- `src/main/java/dev/taskflow/http/SseNotifications.java` — cancelled/deleted и очистка подписок при удалении.
+- `src/main/java/dev/taskflow/Main.java` — подключение уведомлений об удалении.
+- `src/main/resources/webroot/app.js` — кнопки, статус, обработка 204/ошибок и удаление карточек.
+- `src/test/java/dev/taskflow/MemoryStores.java`, `TaskExecutorTest.java`, `RoutesTest.java` — актуальный контракт
+  тестовых обработчиков и хранилища.
+- `src/test/java/dev/taskflow/PostgresTest.java`, `http/SseIntegrationTest.java` — SQL/HTTP/SSE-проверки отмены и
+  удаления.
+- `FILES.md` — перечень изменений.
+
+README не изменялся. Новых зависимостей и Git-коммитов нет.
+
+Проверки жизненного цикла: чистая сборка `gradlew.bat clean build test --rerun-tasks` успешна,
+все 42 теста прошли без ошибок и пропусков, включая PostgreSQL и HTTP/SSE. Синтаксис app.js проверен через node --check.

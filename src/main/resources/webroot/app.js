@@ -2,8 +2,9 @@
 let token = sessionStorage.getItem('taskflow-token');
 const streams = new Map();
 const cards = new Map();
+const busyTasks = new Set();
 const $ = id => document.getElementById(id);
-const terminal = task => ['COMPLETED', 'FAILED'].includes(task.status);
+const terminal = task => ['COMPLETED', 'FAILED', 'CANCELLED'].includes(task.status);
 
 function message(text) {
     $('message').textContent = text;
@@ -14,10 +15,12 @@ async function api(path, options = {}) {
         ...options,
         headers: {'Content-Type': 'application/json', ...(token ? {Authorization: `Bearer ${token}`} : {}), ...options.headers}
     });
-    const data = await response.json();
+    const data = response.status === 204 ? null : await response.json();
     if (!response.ok) {
         if (response.status === 401 && !['/api/auth/login', '/api/auth/register'].includes(path)) logout();
-        throw new Error(data.error || 'Ошибка запроса');
+        const error = new Error(data.error || 'Ошибка запроса');
+        error.status = response.status;
+        throw error;
     }
     return data;
 }
@@ -28,6 +31,7 @@ function logout() {
     streams.forEach(controller => controller.abort());
     streams.clear();
     cards.clear();
+    busyTasks.clear();
     $('tasks').replaceChildren();
     $('auth').hidden = false;
     $('workspace').hidden = true;
@@ -73,7 +77,16 @@ function render(task) {
         meta.className = 'meta';
         const error = document.createElement('p');
         error.className = 'error';
-        card.append(top, progress, meta, error);
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        for (const [operation, label] of [['cancel', 'Отменить'], ['delete', 'Удалить']]) {
+            const button = document.createElement('button');
+            button.dataset.operation = operation;
+            button.textContent = label;
+            button.addEventListener('click', () => taskAction(task.id, operation));
+            actions.append(button);
+        }
+        card.append(top, progress, meta, error, actions);
         cards.set(task.id, card);
         $('tasks').prepend(card);
     }
@@ -82,7 +95,40 @@ function render(task) {
     card.querySelector('progress').value = task.progress;
     card.querySelector('.meta').textContent = `${task.id} · ${new Date(task.createdAt).toLocaleString('ru-RU')}`;
     card.querySelector('.error').textContent = task.error || '';
+    card.querySelector('[data-operation="cancel"]').hidden = terminal(task);
+    card.querySelector('[data-operation="delete"]').hidden = !terminal(task);
+    card.querySelectorAll('button').forEach(button => button.disabled = busyTasks.has(task.id));
     $('empty').hidden = cards.size > 0;
+}
+
+function removeTask(id) {
+    streams.get(id)?.abort();
+    streams.delete(id);
+    cards.get(id)?.remove();
+    cards.delete(id);
+    $('empty').hidden = cards.size > 0;
+}
+
+async function taskAction(id, operation) {
+    if (busyTasks.has(id)) return;
+    const actionToken = token;
+    busyTasks.add(id);
+    cards.get(id)?.querySelectorAll('button').forEach(button => button.disabled = true);
+    try {
+        const result = await api(`/api/tasks/${id}${operation === 'cancel' ? '/cancel' : ''}`,
+            {method: operation === 'cancel' ? 'POST' : 'DELETE'});
+        if (!token || token !== actionToken) return;
+        if (operation === 'delete') removeTask(id); else render(result);
+        message('');
+    } catch (error) {
+        if (token === actionToken) {
+            if (error.status === 404) removeTask(id);
+            message(error.message);
+        }
+    } finally {
+        busyTasks.delete(id);
+        cards.get(id)?.querySelectorAll('button').forEach(button => button.disabled = false);
+    }
 }
 
 async function subscribe(id) {
@@ -98,6 +144,11 @@ async function subscribe(id) {
         });
         if (!response.ok) {
             if (response.status === 401) logout();
+            if (response.status === 404) {
+                finished = true;
+                removeTask(id);
+                return;
+            }
             throw new Error('Не удалось подключиться к прогрессу');
         }
         const reader = response.body.getReader();
@@ -114,8 +165,13 @@ async function subscribe(id) {
                 const line = frame.split('\n').find(line => line.startsWith('data: '));
                 if (line && token === subscribedToken && !controller.signal.aborted) {
                     const task = JSON.parse(line.slice(6));
-                    render(task);
-                    finished = terminal(task);
+                    if (frame.split('\n').includes('event: deleted')) {
+                        finished = true;
+                        removeTask(task.id);
+                    } else {
+                        render(task);
+                        finished = terminal(task);
+                    }
                 }
             }
         }
@@ -135,6 +191,8 @@ async function load() {
     $('workspace').hidden = false;
     $('current-user').textContent = user.login;
     $('account').hidden = false;
+    const visible = new Set(tasks.map(task => task.id));
+    for (const id of cards.keys()) if (!visible.has(id)) removeTask(id);
     tasks.reverse().forEach(task => {
         render(task);
         if (!terminal(task)) subscribe(task.id);

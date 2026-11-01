@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 
 final class MemoryStores {
-    static final class Tasks implements TaskStore {
+    static class Tasks implements TaskStore {
         final Map<UUID, Task> tasks = new LinkedHashMap<>();
 
         public Future<Task> create(UUID owner, String type) {
@@ -29,11 +29,22 @@ final class MemoryStores {
 
         public Future<Task> update(UUID id, Task.Status status, int progress, String error) {
             Task old = tasks.get(id);
+            if (old == null || old.terminal() || status == Task.Status.PENDING
+                    || old.status() == Task.Status.PENDING && status == Task.Status.COMPLETED
+                    || progress < old.progress() || progress > 100 || status == Task.Status.COMPLETED && progress != 100)
+                return Future.failedFuture("Недопустимый переход задачи");
             Task task = new Task(id, old.ownerId(), old.type(), status, progress, old.createdAt(),
                     old.startedAt() == null && status == Task.Status.RUNNING ? OffsetDateTime.now() : old.startedAt(),
-                    status == Task.Status.COMPLETED || status == Task.Status.FAILED ? OffsetDateTime.now() : null, error);
+                    status == Task.Status.COMPLETED || status == Task.Status.FAILED || status == Task.Status.CANCELLED ? OffsetDateTime.now() : null, error);
             tasks.put(id, task);
             return Future.succeededFuture(task);
+        }
+
+        public Future<Boolean> delete(UUID owner, UUID id) {
+            Task task = tasks.get(id);
+            if (task == null || !task.ownerId().equals(owner) || !task.terminal()) return Future.succeededFuture(false);
+            tasks.remove(id);
+            return Future.succeededFuture(true);
         }
     }
 

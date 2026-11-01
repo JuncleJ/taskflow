@@ -46,6 +46,7 @@ class SseIntegrationTest {
     private String base;
     private String token;
     private UUID owner;
+    private boolean holdTerminalNotifications;
 
     @BeforeEach
     void start() throws Exception {
@@ -83,10 +84,13 @@ class SseIntegrationTest {
             notifications = new SseNotifications(trackedTimers, 50);
             store = new PgTaskStore(pool);
             TaskHandlerRegistry registry = new TaskHandlerRegistry(handler);
-            executor = new TaskExecutor(store, registry, notifications::publish, 3);
+            executor = new TaskExecutor(store, registry, task -> {
+                // Управляемое окно между сохранением терминального статуса и его SSE-доставкой.
+                if (!holdTerminalNotifications || !task.terminal()) notifications.publish(task);
+            }, 3);
             return vertx.createHttpServer().requestHandler(Routes.create(vertx,
                     new AuthService(vertx, new PgAuthStore(pool), dummyHash),
-                    new TaskService(store, registry, executor), notifications)).listen(0);
+                    new TaskService(store, registry, executor, notifications::deleted), notifications)).listen(0);
         });
         base = "http://localhost:" + server.actualPort();
         client = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
@@ -227,6 +231,97 @@ class SseIntegrationTest {
         finish(id);
     }
 
+    @Test
+    @DisplayName("Отмена по HTTP ждёт остановки, проверяет владельца и доставляет SSE cancelled")
+    void cancellationIsOwnerScopedCooperativeAndDeliveredThroughSse() throws Exception {
+        UUID id = createTask();
+        advance(30);
+        String originalToken = token;
+        token = json("POST", "/api/auth/register", new JsonObject().put("login", "other_user")
+                .put("password", PasswordHasher.newToken()), 201).getString("token");
+        json("POST", "/api/tasks/" + id + "/cancel", null, 404);
+        json("DELETE", "/api/tasks/" + id, null, 404);
+        token = originalToken;
+        json("DELETE", "/api/tasks/" + id, null, 409);
+        try (SseClient sse = subscribe(id)) {
+            assertEvent(sse.next(), "progress", "RUNNING", 30);
+            CompletableFuture<HttpResponse<String>> cancellation = requestCancellation(id);
+            awaitCondition(() -> onContext(() -> io.vertx.core.Future.succeededFuture(handler.cancellation.isRequested())));
+            assertFalse(cancellation.isDone(), "Ответ не должен подтверждать отмену ещё работающего обработчика");
+            assertEquals(Task.Status.RUNNING, await(store.find(owner, id)).status());
+            onContext(() -> {
+                handler.result.complete();
+                return io.vertx.core.Future.succeededFuture();
+            });
+            HttpResponse<String> response = cancellation.get(5, TimeUnit.SECONDS);
+            assertEquals(200, response.statusCode(), response.body());
+            JsonObject cancelled = new JsonObject(response.body());
+            assertEquals("CANCELLED", cancelled.getString("status"));
+            sse.expect("cancelled", "CANCELLED", 30);
+            sse.expectEnd();
+            assertEquals(cancelled, json("POST", "/api/tasks/" + id + "/cancel", null, 200));
+        }
+        awaitResources(new Resources(0, 0, 0, 0));
+        assertEquals(Task.Status.CANCELLED, await(store.find(owner, id)).status());
+        json("DELETE", "/api/tasks/" + id, null, 204);
+        assertNull(await(store.find(owner, id)));
+        json("GET", "/api/tasks/" + id, null, 404);
+        json("POST", "/api/tasks/" + id + "/cancel", null, 404);
+        json("DELETE", "/api/tasks/" + id, null, 404);
+    }
+
+    @Test
+    @DisplayName("Гонка HTTP-отмены и естественного завершения сохраняет один согласованный результат")
+    void cancellationRacingWithCompletionHasConsistentResult() throws Exception {
+        UUID id = createTask();
+        advance(50);
+        try (SseClient sse = subscribe(id)) {
+            assertEvent(sse.next(), "progress", "RUNNING", 50);
+            CompletableFuture<HttpResponse<String>> cancellation = requestCancellation(id);
+            onContext(() -> {
+                handler.result.complete();
+                return io.vertx.core.Future.succeededFuture();
+            });
+            HttpResponse<String> response = cancellation.get(5, TimeUnit.SECONDS);
+            assertTrue(response.statusCode() == 200 || response.statusCode() == 409);
+            Task.Status expected = response.statusCode() == 200 ? Task.Status.CANCELLED : Task.Status.COMPLETED;
+            awaitCondition(() -> await(store.find(owner, id)).terminal());
+            Task finalTask = await(store.find(owner, id));
+            assertEquals(expected, finalTask.status());
+            sse.expect(expected == Task.Status.CANCELLED ? "cancelled" : "completed", expected.name(), finalTask.progress());
+            sse.expectEnd();
+            assertTrue(json("GET", "/api/tasks/" + id, null, 200).getString("status").equals(expected.name()));
+        }
+    }
+
+    @Test
+    @DisplayName("Удаление COMPLETED физически удаляет строку и закрывает ещё активную SSE-подписку")
+    void deletionClosesSubscriptionInFinalNotificationWindow() throws Exception {
+        UUID id = createTask();
+        advance(50);
+        try (SseClient sse = subscribe(id)) {
+            assertEvent(sse.next(), "progress", "RUNNING", 50);
+            onContext(() -> {
+                holdTerminalNotifications = true;
+                return io.vertx.core.Future.succeededFuture();
+            });
+            finish(id);
+            json("POST", "/api/tasks/" + id + "/cancel", null, 409);
+            awaitResources(new Resources(1, 1, 1, 1));
+            json("DELETE", "/api/tasks/" + id, null, 204);
+            sse.expectDeleted(id);
+            sse.expectEnd();
+            assertNull(await(store.find(owner, id)));
+        }
+        awaitResources(new Resources(0, 0, 0, 0));
+    }
+
+    private CompletableFuture<HttpResponse<String>> requestCancellation(UUID id) {
+        return client.sendAsync(HttpRequest.newBuilder(URI.create(base + "/api/tasks/" + id + "/cancel"))
+                .header("Authorization", "Bearer " + token).timeout(Duration.ofSeconds(5))
+                .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private UUID createTask() throws Exception {
         UUID id = UUID.fromString(json("POST", "/api/tasks", new JsonObject().put("type", "DEMO"), 202).getString("id"));
         await(handler.started.future());
@@ -252,7 +347,7 @@ class SseIntegrationTest {
         HttpResponse<String> response = client.send(request.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(body.encode())).build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(status, response.statusCode(), response.body());
-        return new JsonObject(response.body());
+        return status == 204 ? null : new JsonObject(response.body());
     }
 
     private SseClient subscribe(UUID id) throws Exception {
@@ -273,6 +368,7 @@ class SseIntegrationTest {
             // Только тестовый доступ: production API не расширяется ради внутренних счётчиков.
             Map<?, ?> clients = field("clients");
             int subscribers = clients.values().stream().mapToInt(value -> ((Set<?>) value).size()).sum();
+            assertEquals(subscribers, field("cleanups").size(), "Обработчики очистки не должны удерживать закрытые ответы");
             return io.vertx.core.Future.succeededFuture(new Resources(clients.size(), subscribers, field("lastSent").size(), heartbeatTimers.size()));
         })));
     }
@@ -316,13 +412,15 @@ class SseIntegrationTest {
         final Promise<Void> started = Promise.promise();
         final Promise<Void> result = Promise.promise();
         IntFunction<io.vertx.core.Future<Void>> progress;
+        CancellationToken cancellation;
 
         public String type() {
             return "DEMO";
         }
 
-        public io.vertx.core.Future<Void> execute(IntFunction<io.vertx.core.Future<Void>> progress) {
+        public io.vertx.core.Future<Void> execute(IntFunction<io.vertx.core.Future<Void>> progress, CancellationToken cancellation) {
             this.progress = progress;
+            this.cancellation = cancellation;
             started.complete();
             return result.future();
         }
@@ -378,7 +476,7 @@ class SseIntegrationTest {
             Event event = events.poll(5, TimeUnit.SECONDS);
             assertNotNull(event, "SSE-событие не пришло за 5 секунд");
             assertNull(error, "Ошибка чтения SSE: " + error);
-            if (event != EOF) {
+            if (event != EOF && event.data().containsKey("progress")) {
                 int progress = event.data().getInteger("progress");
                 assertTrue(progress >= lastProgress, "Прогресс не должен уменьшаться");
                 lastProgress = progress;
@@ -400,6 +498,19 @@ class SseIntegrationTest {
 
         void expectEnd() throws Exception {
             assertSame(EOF, next(), "После финального события ожидается EOF");
+        }
+
+        void expectDeleted(UUID id) throws Exception {
+            for (int i = 0; i < 10; i++) {
+                Event event = next();
+                assertNotSame(EOF, event);
+                if (event.name().equals("deleted")) {
+                    assertEquals(id.toString(), event.data().getString("id"));
+                    return;
+                }
+                assertEquals("progress", event.name());
+            }
+            fail("Не пришло событие deleted");
         }
 
         public void close() throws Exception {
