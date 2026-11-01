@@ -78,3 +78,12 @@
 - `src/test/java/dev/taskflow/http/SseNotificationsTest.java` — адаптация к совместным обработчикам завершения.
 - `.env.example`, `docker-compose.yml` — передача LOG_LEVEL.
 - `README.md`, `FILES.md` — документация и перечень изменений.
+
+## Дополнение: события аутентификации
+
+- `src/main/java/dev/taskflow/auth/AuthService.java` — успех регистрации и входа, отказы и внутренние сбои,
+  DEBUG-событие успешной проверки токена; без учётных данных.
+- `src/test/java/dev/taskflow/RoutesTest.java` — проверки уровней, причин отказов, успеха и отсутствия секретов.
+- `README.md` — описание событий и результатов проверки: 16 тестов прошли без пропусков.
+- `FILES.md` — перечень изменений.
+

@@ -181,4 +181,59 @@ class RoutesTest {
         assertEquals(1, logEvents.stream().map(ILoggingEvent::getFormattedMessage)
                 .filter(m -> m.startsWith("HTTP method=GET route=/api/tasks/:id/events status=200 durationMs=")).count());
     }
+
+    @Test
+    void authenticationOperationsAreLoggedWithoutCredentials() throws Exception {
+        appLogger.setLevel(Level.DEBUG);
+        String token = register("private_login");
+        assertEquals(200, request("POST", "/api/auth/login", null, "{\"login\":\"private_login\",\"password\":\"password123\"}").statusCode());
+        assertEquals(401, request("POST", "/api/auth/login", null, "{\"login\":\"private_login\",\"password\":\"wrong-password\"}").statusCode());
+        assertEquals(401, request("POST", "/api/auth/login", null, "{\"login\":\"unknown_login\",\"password\":\"wrong-password\"}").statusCode());
+        assertEquals(409, request("POST", "/api/auth/register", null, "{\"login\":\"private_login\",\"password\":\"password123\"}").statusCode());
+        assertEquals(400, request("POST", "/api/auth/register", null, "{\"login\":\"x\",\"password\":\"short\"}").statusCode());
+        assertEquals(200, request("GET", "/api/tasks", token, null).statusCode());
+        assertEquals(401, request("GET", "/api/tasks", null, null).statusCode());
+        assertEquals(401, request("GET", "/api/tasks", "invalid-token-marker", null).statusCode());
+        String unknownToken = PasswordHasher.newToken();
+        assertEquals(401, request("GET", "/api/tasks", unknownToken, null).statusCode());
+        List<ILoggingEvent> events = logEvents.stream().filter(e -> e.getLoggerName().equals(AuthService.class.getName())).toList();
+        assertEquals(1, events.stream().filter(e -> e.getLevel() == Level.INFO && e.getFormattedMessage().contains("operation=register userId=")).count());
+        assertEquals(1, events.stream().filter(e -> e.getLevel() == Level.INFO && e.getFormattedMessage().contains("operation=login userId=")).count());
+        assertEquals(2, events.stream().filter(e -> e.getLevel() == Level.WARN && e.getFormattedMessage().contains("reason=invalid_credentials")).count());
+        for (String reason : List.of("login_taken", "validation_failed", "missing_token", "invalid_token_format", "invalid_session")) {
+            assertTrue(events.stream().anyMatch(e -> e.getLevel() == Level.WARN && e.getFormattedMessage().contains("reason=" + reason)), reason);
+        }
+        assertTrue(events.stream().anyMatch(e -> e.getLevel() == Level.DEBUG && e.getFormattedMessage().contains("operation=authenticate userId=")));
+        String logs = String.join("\n", logEvents.stream().map(ILoggingEvent::getFormattedMessage).toList());
+        for (String secret : List.of(token, unknownToken, PasswordHasher.tokenHash(token), "private_login", "unknown_login", "password123", "wrong-password", "invalid-token-marker")) {
+            assertFalse(logs.contains(secret), "В журнал попали учётные данные");
+        }
+        assertTrue(events.stream().allMatch(e -> e.getThrowableProxy() == null));
+    }
+
+    @Test
+    void authenticationInfrastructureFailureIsLoggedAsErrorWithoutMessage() throws Exception {
+        AuthStore failingStore = new AuthStore() {
+            public io.vertx.core.Future<Void> register(UUID id, String login, String hash) {
+                return io.vertx.core.Future.failedFuture("db-secret-marker");
+            }
+
+            public io.vertx.core.Future<User> user(String login) {
+                return io.vertx.core.Future.failedFuture("db-secret-marker");
+            }
+
+            public io.vertx.core.Future<Void> session(String hash, UUID user) {
+                return io.vertx.core.Future.failedFuture("db-secret-marker");
+            }
+
+            public io.vertx.core.Future<UUID> authenticate(String hash) {
+                return io.vertx.core.Future.failedFuture("db-secret-marker");
+            }
+        };
+        AuthService service = new AuthService(vertx, failingStore, "unused");
+        assertThrows(Exception.class, () -> await(service.login("private_login", "password123")));
+        assertTrue(logEvents.stream().anyMatch(e -> e.getLevel() == Level.ERROR && e.getFormattedMessage().contains("operation=login reason=internal_error errorType=")));
+        assertFalse(logEvents.stream().anyMatch(e -> e.getFormattedMessage().contains("db-secret-marker") || e.getThrowableProxy() != null));
+    }
+
 }
