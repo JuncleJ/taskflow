@@ -78,7 +78,7 @@ function render(task) {
         const error = document.createElement('p');
         error.className = 'error';
         const actions = document.createElement('div');
-        actions.className = 'actions';
+        actions.className = 'actions task-actions';
         for (const [operation, label] of [['cancel', 'Отменить'], ['delete', 'Удалить']]) {
             const button = document.createElement('button');
             button.dataset.operation = operation;

@@ -355,6 +355,7 @@ class SseIntegrationTest {
         for (Object invalid : Arrays.asList(1, 10_000_001, 2.5, "100", false, null, Long.MAX_VALUE))
             json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK").put("limit", invalid), 400);
         json("POST", "/api/tasks", new JsonObject().put("type", "CPU_TASK"), 400);
+        json("POST", "/api/tasks", new JsonObject().put("type", "REPORT"), 400);
         json("POST", "/api/tasks", new JsonObject().put("type", "DEMO").put("limit", 100), 400);
         assertEquals(before, await(store.list(owner)).size());
     }

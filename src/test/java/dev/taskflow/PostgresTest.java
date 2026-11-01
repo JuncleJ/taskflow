@@ -56,7 +56,7 @@ class PostgresTest {
         await(auth.register(bob, "bob", "test-hash"));
         PgTaskStore tasks = new PgTaskStore(pool);
         Task first = await(tasks.create(alice, "DEMO"));
-        Task pending = await(tasks.create(alice, "REPORT"));
+        Task pending = await(tasks.create(alice, "DEMO"));
         assertNull(await(tasks.find(bob, first.id())));
         assertTrue(await(tasks.list(bob)).isEmpty());
         Task running = await(tasks.update(first.id(), Task.Status.RUNNING, 25, null));

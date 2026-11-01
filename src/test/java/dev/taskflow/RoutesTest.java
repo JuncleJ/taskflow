@@ -62,7 +62,7 @@ class RoutesTest {
                     return io.vertx.core.Future.failedFuture("sensitive-error-marker");
                 }
             };
-            TaskHandlerRegistry registry = new TaskHandlerRegistry(new TimedTaskHandler(vertx, "DEMO", 4, 30), new TimedTaskHandler(vertx, "REPORT", 4, 30), failing);
+            TaskHandlerRegistry registry = new TaskHandlerRegistry(new TimedTaskHandler(vertx, "DEMO", 4, 30), failing);
             TaskExecutor executor = new TaskExecutor(store, registry, sse::publish, 2);
             vertx.createHttpServer().requestHandler(Routes.create(vertx, new AuthService(vertx, new MemoryStores.Auth(), dummy),
                     new TaskService(store, registry, executor, sse::deleted), sse)).listen(0).onComplete(ready);
@@ -109,9 +109,9 @@ class RoutesTest {
     }
 
     @Test
-    void endpointsIsolateOwnersIncludingSseAndReportCompletion() throws Exception {
+    void endpointsIsolateOwnersIncludingSseAndTaskCompletion() throws Exception {
         String alice = register("alice"), bob = register("bob");
-        HttpResponse<String> created = request("POST", "/api/tasks", alice, "{\"type\":\"REPORT\"}");
+        HttpResponse<String> created = request("POST", "/api/tasks", alice, "{\"type\":\"DEMO\"}");
         assertEquals(202, created.statusCode());
         String path = "/api/tasks/" + new JsonObject(created.body()).getString("id");
         assertEquals(404, request("GET", path, bob, null).statusCode());
@@ -125,6 +125,7 @@ class RoutesTest {
         assertEquals("COMPLETED", new JsonObject(request("GET", path, alice, null).body()).getString("status"));
         assertEquals(400, request("GET", "/api/tasks/not-a-uuid", alice, null).statusCode());
         assertEquals(400, request("POST", "/api/tasks", alice, "{\"type\":\"UNKNOWN\"}").statusCode());
+        assertEquals(400, request("POST", "/api/tasks", alice, "{\"type\":\"REPORT\"}").statusCode());
     }
 
     @Test

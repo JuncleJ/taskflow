@@ -56,7 +56,7 @@ public final class Main {
                     .compose(dummyHash -> {
                         SseNotifications notifications = new SseNotifications(vertx);
                         cpuHandler = new CpuTaskHandler(vertx, number("CPU_WORKERS", 2), number("CPU_QUEUE_CAPACITY", 16));
-                        TaskHandlerRegistry registry = new TaskHandlerRegistry(new DemoTaskHandler(vertx), new TimedTaskHandler(vertx, "REPORT", 4, 1000), cpuHandler);
+                        TaskHandlerRegistry registry = new TaskHandlerRegistry(new DemoTaskHandler(vertx), cpuHandler);
                         PgTaskStore store = new PgTaskStore(pool);
                         executor = new TaskExecutor(store, registry, notifications::publish, number("TASK_PARALLELISM", 3), number("TASK_QUEUE_CAPACITY", 100));
                         return vertx.createHttpServer().requestHandler(Routes.create(vertx,

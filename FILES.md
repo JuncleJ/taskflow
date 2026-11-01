@@ -35,7 +35,6 @@
 - `src/main/java/dev/taskflow/task/TaskExecutor.java`
 - `src/main/java/dev/taskflow/task/TaskHandler.java`
 - `src/main/java/dev/taskflow/task/TaskHandlerRegistry.java`
-- `src/main/java/dev/taskflow/task/TimedTaskHandler.java`
 
 ## Ресурсы и интерфейс
 
@@ -50,6 +49,7 @@
 - `src/test/java/dev/taskflow/MemoryStores.java`
 - `src/test/java/dev/taskflow/PasswordHasherTest.java`
 - `src/test/java/dev/taskflow/TaskExecutorTest.java`
+- `src/test/java/dev/taskflow/task/TimedTaskHandler.java` — тестовый обработчик фиксированных шагов.
 - `src/test/java/dev/taskflow/RoutesTest.java`
 - `src/test/java/dev/taskflow/LoggingConfigurationTest.java`
 - `src/test/java/dev/taskflow/PostgresTest.java`
@@ -182,3 +182,19 @@ README не изменялся. Новых зависимостей и Git-ко�
 Результат проверки настраиваемых задач: `gradlew.bat clean build test --rerun-tasks` — успешно,
 все 63 теста прошли без ошибок и пропусков, включая PostgreSQL, HTTP/SSE, CPU-потоки и завершение пула.
 Синтаксис app.js проверен через node --check.
+
+## Удаление REPORT и отступы списка задач
+
+- `src/main/java/dev/taskflow/Main.java` — в реестре приложения оставлены DEMO и CPU_TASK.
+- `src/main/java/dev/taskflow/task/TimedTaskHandler.java` перенесён в
+  `src/test/java/dev/taskflow/task/TimedTaskHandler.java`: фиксированные шаги нужны только тестовым сценариям.
+- `src/main/resources/webroot/index.html` — убрана кнопка REPORT.
+- `src/main/resources/webroot/style.css` — разделитель и отступ панели запуска, интервалы карточек,
+  отдельный отступ кнопок внутри карточки.
+- `src/main/resources/webroot/app.js` — класс для расположения кнопок карточки.
+- `src/test/java/dev/taskflow/RoutesTest.java`, `PostgresTest.java`, `http/SseIntegrationTest.java` — убран запуск REPORT,
+  проверяется отказ HTTP 400 при попытке его создания.
+- `README.md`, `docs/configurable-tasks.md`, `FILES.md` — актуальные типы и перечень изменений.
+
+Ранее сохранённые задачи REPORT не удаляются автоматически. Чистая сборка успешна, все 63 теста прошли
+без ошибок и пропусков с PostgreSQL. Синтаксис app.js проверен. Визуальная проверка браузером не выполнялась.

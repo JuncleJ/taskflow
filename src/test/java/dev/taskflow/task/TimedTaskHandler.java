@@ -5,7 +5,7 @@ import io.vertx.core.*;
 import java.util.function.IntFunction;
 
 /**
- * Демонстрационная работа на таймерах: ожидание не занимает поток.
+ * Тестовый обработчик с фиксированными шагами: позволяет проверять исполнитель без ожидания реального DEMO.
  */
 public final class TimedTaskHandler implements TaskHandler {
     private final Vertx vertx;
