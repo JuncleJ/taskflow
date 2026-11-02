@@ -61,8 +61,16 @@ section, article {
 }
 
 .task-launcher {
-    align-items: flex-end;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: 16px;
+    width: 100%;
+}
+
+.task-launcher button {
+    width: 100%;
+    min-height: 46px;
 }
 
 .toolbar {
@@ -88,7 +96,6 @@ section, article {
 
 .task-launcher label {
     margin-bottom: 10px;
-    max-width: 220px;
 }
 
 label {
@@ -120,6 +127,14 @@ button {
 
 button:hover {
     background: #a4b8fc;
+}
+
+button[data-operation="delete"] {
+    background: #f2aaaa;
+}
+
+button[data-operation="delete"]:hover {
+    background: #f7c1c1;
 }
 
 button:disabled {
@@ -169,5 +184,9 @@ progress {
 
     section, article {
         padding: 16px;
+    }
+
+    .task-launcher {
+        grid-template-columns: 1fr;
     }
 }
